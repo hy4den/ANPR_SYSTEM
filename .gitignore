@@ -1,0 +1,21 @@
+# OS/editor
+.DS_Store
+.vscode/
+
+# Environment and secrets
+.env
+backend/.env
+frontend/.env
+
+# Runtime/generated data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+backend/captured_images/
+backend/certs/
+
+# Build artifacts
+backend/build/
+frontend/node_modules/
+frontend/dist/
