@@ -1,6 +1,24 @@
 #include "database.h"
 #include <stdexcept>
 
+static bool table_has_column(sqlite3* db, const char* table, const char* column) {
+    std::string sql = "PRAGMA table_info(" + std::string(table) + ")";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        auto col = sqlite3_column_text(stmt, 1);
+        if (!col) continue;
+        if (std::string(reinterpret_cast<const char*>(col)) == column) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 Database::Database(const std::string& path) {
     if (sqlite3_open(path.c_str(), &db_) != SQLITE_OK)
         throw std::runtime_error(
@@ -41,10 +59,15 @@ void Database::init_schema() {
             PlateID      INTEGER PRIMARY KEY AUTOINCREMENT,
             LicensePlate TEXT    UNIQUE NOT NULL,
             OwnerName    TEXT,
+            OwnerEmail   TEXT,
             Category     TEXT    CHECK(Category IN ('VIP','Staff','Blacklisted','Resident')),
             AutoGrant    INTEGER NOT NULL DEFAULT 0
         );
     )");
+
+    if (!table_has_column(db_, "Watchlist", "OwnerEmail")) {
+        exec("ALTER TABLE Watchlist ADD COLUMN OwnerEmail TEXT;");
+    }
 
     exec(R"(
         CREATE TABLE IF NOT EXISTS Admin_Users (
@@ -55,6 +78,14 @@ void Database::init_schema() {
             ContactPhone    TEXT,
             AlertPreference TEXT CHECK(AlertPreference IN
                 ('All','Only_Blacklisted','Only_VIP','None')) DEFAULT 'All'
+        );
+    )");
+
+    exec(R"(
+        CREATE TABLE IF NOT EXISTS Device_Tokens (
+            Token       TEXT PRIMARY KEY,
+            Platform    TEXT NOT NULL DEFAULT 'web',
+            UpdatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
         );
     )");
 }
@@ -134,7 +165,7 @@ std::vector<AccessLog> Database::get_logs(const std::string& plate_filter,
 std::optional<WatchlistEntry> Database::find_plate(const std::string& plate) {
     std::lock_guard<std::mutex> lk(mutex_);
     const char* sql =
-        "SELECT PlateID,LicensePlate,OwnerName,Category,AutoGrant"
+        "SELECT PlateID,LicensePlate,OwnerName,OwnerEmail,Category,AutoGrant"
         " FROM Watchlist WHERE UPPER(LicensePlate)=UPPER(?)";
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
@@ -148,9 +179,11 @@ std::optional<WatchlistEntry> Database::find_plate(const std::string& plate) {
         e.license_plate = lp ? reinterpret_cast<const char*>(lp) : "";
         auto on         = sqlite3_column_text(stmt, 2);
         e.owner_name    = on ? reinterpret_cast<const char*>(on) : "";
-        auto cat        = sqlite3_column_text(stmt, 3);
+        auto oe         = sqlite3_column_text(stmt, 3);
+        e.owner_email   = oe ? reinterpret_cast<const char*>(oe) : "";
+        auto cat        = sqlite3_column_text(stmt, 4);
         e.category      = cat ? reinterpret_cast<const char*>(cat) : "";
-        e.auto_grant    = sqlite3_column_int(stmt, 4) != 0;
+        e.auto_grant    = sqlite3_column_int(stmt, 5) != 0;
         result = e;
     }
     sqlite3_finalize(stmt);
@@ -160,7 +193,7 @@ std::optional<WatchlistEntry> Database::find_plate(const std::string& plate) {
 std::vector<WatchlistEntry> Database::get_watchlist() {
     std::lock_guard<std::mutex> lk(mutex_);
     const char* sql =
-        "SELECT PlateID,LicensePlate,OwnerName,Category,AutoGrant FROM Watchlist";
+        "SELECT PlateID,LicensePlate,OwnerName,OwnerEmail,Category,AutoGrant FROM Watchlist";
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
 
@@ -172,9 +205,11 @@ std::vector<WatchlistEntry> Database::get_watchlist() {
         e.license_plate = lp ? reinterpret_cast<const char*>(lp) : "";
         auto on         = sqlite3_column_text(stmt, 2);
         e.owner_name    = on ? reinterpret_cast<const char*>(on) : "";
-        auto cat        = sqlite3_column_text(stmt, 3);
+        auto oe         = sqlite3_column_text(stmt, 3);
+        e.owner_email   = oe ? reinterpret_cast<const char*>(oe) : "";
+        auto cat        = sqlite3_column_text(stmt, 4);
         e.category      = cat ? reinterpret_cast<const char*>(cat) : "";
-        e.auto_grant    = sqlite3_column_int(stmt, 4) != 0;
+        e.auto_grant    = sqlite3_column_int(stmt, 5) != 0;
         list.push_back(e);
     }
     sqlite3_finalize(stmt);
@@ -182,17 +217,19 @@ std::vector<WatchlistEntry> Database::get_watchlist() {
 }
 
 void Database::add_plate(const std::string& plate, const std::string& owner,
+                         const std::string& owner_email,
                          const std::string& category, bool auto_grant) {
     std::lock_guard<std::mutex> lk(mutex_);
     const char* sql =
         "INSERT OR REPLACE INTO Watchlist"
-        "(LicensePlate,OwnerName,Category,AutoGrant) VALUES(?,?,?,?)";
+        "(LicensePlate,OwnerName,OwnerEmail,Category,AutoGrant) VALUES(?,?,?,?,?)";
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, plate.c_str(),    -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, owner.c_str(),    -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, category.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int (stmt, 4, auto_grant ? 1 : 0);
+    sqlite3_bind_text(stmt, 3, owner_email.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, category.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 5, auto_grant ? 1 : 0);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -238,4 +275,50 @@ std::vector<AdminUser> Database::get_admins_for_alert(const std::string& categor
     }
     sqlite3_finalize(stmt);
     return admins;
+}
+
+void Database::register_device_token(const std::string& token, const std::string& platform) {
+    std::lock_guard<std::mutex> lk(mutex_);
+    const char* sql =
+        "INSERT INTO Device_Tokens(Token,Platform,UpdatedAt)"
+        " VALUES(?1,?2,datetime('now'))"
+        " ON CONFLICT(Token) DO UPDATE SET"
+        " Platform=excluded.Platform,"
+        " UpdatedAt=datetime('now')";
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, token.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, platform.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+void Database::unregister_device_token(const std::string& token) {
+    std::lock_guard<std::mutex> lk(mutex_);
+    const char* sql = "DELETE FROM Device_Tokens WHERE Token=?1";
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, token.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+std::vector<DeviceToken> Database::get_device_tokens() {
+    std::lock_guard<std::mutex> lk(mutex_);
+    const char* sql = "SELECT Token,Platform FROM Device_Tokens";
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+
+    std::vector<DeviceToken> tokens;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        DeviceToken d;
+        auto tk = sqlite3_column_text(stmt, 0);
+        auto pf = sqlite3_column_text(stmt, 1);
+        d.token = tk ? reinterpret_cast<const char*>(tk) : "";
+        d.platform = pf ? reinterpret_cast<const char*>(pf) : "web";
+        if (!d.token.empty()) tokens.push_back(d);
+    }
+    sqlite3_finalize(stmt);
+    return tokens;
 }

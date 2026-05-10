@@ -14,6 +14,7 @@ frontend/.env
 *.sqlite3
 backend/captured_images/
 backend/certs/
+backend/secrets/
 
 # Build artifacts
 backend/build/

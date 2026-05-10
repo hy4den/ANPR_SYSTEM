@@ -9,7 +9,13 @@ const CAT_CLASS   = {
   Resident:    'cat-resident',
 }
 
-const EMPTY_FORM = { license_plate: '', owner_name: '', category: 'Resident', auto_grant: false }
+const EMPTY_FORM = {
+  license_plate: '',
+  owner_name: '',
+  owner_email: '',
+  category: 'Resident',
+  auto_grant: false,
+}
 
 function WatchlistPage() {
   const [list, setList]           = useState([])
@@ -93,6 +99,15 @@ function WatchlistPage() {
             value={form.owner_name}
             onChange={handleChange}
           />
+          <input
+            className="input"
+            style={{ minWidth: 200 }}
+            placeholder="Sahip E-posta (bildirim icin)"
+            type="email"
+            name="owner_email"
+            value={form.owner_email}
+            onChange={handleChange}
+          />
           <select className="input" name="category" value={form.category} onChange={handleChange}>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -118,6 +133,7 @@ function WatchlistPage() {
             <tr>
               <th>Plaka</th>
               <th>Arac Sahibi</th>
+              <th>Sahip E-posta</th>
               <th>Kategori</th>
               <th>Otomatik Ac</th>
               <th></th>
@@ -125,13 +141,14 @@ function WatchlistPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="td-center">Yukleniyor...</td></tr>
+              <tr><td colSpan={6} className="td-center">Yukleniyor...</td></tr>
             ) : list.length === 0 ? (
-              <tr><td colSpan={5} className="td-center">Liste bos — yukardaki formdan arac ekleyin</td></tr>
+              <tr><td colSpan={6} className="td-center">Liste bos — yukardaki formdan arac ekleyin</td></tr>
             ) : list.map(e => (
               <tr key={e.plate_id}>
                 <td><span className="plate-chip">{e.license_plate}</span></td>
                 <td>{e.owner_name || '—'}</td>
+                <td>{e.owner_email || '—'}</td>
                 <td>
                   <span className={`cat-badge ${CAT_CLASS[e.category] || ''}`}>
                     {e.category}

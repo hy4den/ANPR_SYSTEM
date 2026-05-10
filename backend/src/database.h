@@ -9,6 +9,7 @@ struct WatchlistEntry {
     int         plate_id    = 0;
     std::string license_plate;
     std::string owner_name;
+    std::string owner_email;
     std::string category;   // VIP | Staff | Blacklisted | Resident
     bool        auto_grant  = false;
 };
@@ -28,6 +29,11 @@ struct AdminUser {
     std::string contact_email;
     std::string contact_phone;
     std::string alert_preference;  // All | Only_Blacklisted | Only_VIP | None
+};
+
+struct DeviceToken {
+    std::string token;
+    std::string platform;
 };
 
 class Database {
@@ -52,11 +58,17 @@ public:
     std::optional<WatchlistEntry> find_plate(const std::string& plate);
     std::vector<WatchlistEntry>   get_watchlist();
     void add_plate(const std::string& plate, const std::string& owner,
+                   const std::string& owner_email,
                    const std::string& category, bool auto_grant);
     void remove_plate(const std::string& plate);
 
     // Admin_Users — only read, add via direct DB seed
     std::vector<AdminUser> get_admins_for_alert(const std::string& category);
+
+    // Device tokens for web/mobile push notifications
+    void register_device_token(const std::string& token, const std::string& platform);
+    void unregister_device_token(const std::string& token);
+    std::vector<DeviceToken> get_device_tokens();
 
 private:
     sqlite3*          db_    = nullptr;

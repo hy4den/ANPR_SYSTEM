@@ -1,13 +1,13 @@
 #pragma once
 
 // ── WiFi ─────────────────────────────────────────────────────────────────────
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID     "iPhone"
+#define WIFI_PASSWORD "a12345678"
 
 // ── Backend sunucu ────────────────────────────────────────────────────────────
 // SERVER_HOST: backend'i calistiran bilgisayarin yerel IP adresi
 // Bulmak icin: macOS terminalde  →  ipconfig getifaddr en0
-#define SERVER_HOST     "192.168.1.45"   // <-- kendi IP'nizi yazin
+#define SERVER_HOST     "172.20.10.2"   // <-- kendi IP'nizi yazin
 #define SERVER_PORT     8000
 #define SERVER_TLS_PORT 8443
 #define SERVER_ENDPOINT "/api/anpr/process"
@@ -32,12 +32,12 @@
 #define TRIGGER_THRESHOLD_CM 50
 
 // ── 5V Role ───────────────────────────────────────────────────────────────────
-#define RELAY_PIN            2
+#define RELAY_PIN            3
 #define RELAY_ACTIVE_TIME_MS 3000
 
 // ── Manual override / reset button ─────────────────────────────────────────────
 // Buton: GPIO -> GND, INPUT_PULLUP kullanilir (LOW=pressed)
-#define OVERRIDE_BUTTON_PIN          33
+#define OVERRIDE_BUTTON_PIN          16
 #define OVERRIDE_MIN_PRESS_MS        80
 #define RESET_HOLD_MS                4000
 

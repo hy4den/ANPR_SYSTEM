@@ -130,13 +130,24 @@ void register_routes(httplib::Server& svr, Database& db) {
             // 7. Log to database
             db.insert_log(ts, plate, confidence, access_granted, path);
 
-            // 8. Async notification for special categories
+            // 8. Notify owner when access is granted and barrier should open.
+            if (entry && access_granted && !entry->owner_email.empty()) {
+                notify_owner_access_granted_async(entry->owner_email, entry->owner_name, plate, ts);
+            }
+
+            // 9. Async notification for special categories
             if (entry && (category == "VIP" || category == "Blacklisted")) {
                 auto admins = db.get_admins_for_alert(category);
                 notify_admins_async(admins, plate, category, ts);
             }
 
-            // 9. Return JSON to ESP32
+            // 10. Mobile push notification for granted access
+            if (access_granted) {
+                auto device_tokens = db.get_device_tokens();
+                notify_mobile_access_granted_async(device_tokens, plate, ts);
+            }
+
+            // 11. Return JSON to ESP32
             json resp = {{"plate", plate}, {"access_granted", access_granted}};
             res.set_content(resp.dump(), "application/json");
 
@@ -196,6 +207,7 @@ void register_routes(httplib::Server& svr, Database& db) {
                 {"plate_id",      e.plate_id},
                 {"license_plate", e.license_plate},
                 {"owner_name",    e.owner_name},
+                {"owner_email",   e.owner_email},
                 {"category",      e.category},
                 {"auto_grant",    e.auto_grant}
             });
@@ -213,9 +225,10 @@ void register_routes(httplib::Server& svr, Database& db) {
             auto body        = json::parse(req.body);
             std::string plate    = body.at("license_plate");
             std::string owner    = body.value("owner_name",  "");
+            std::string owner_email = body.value("owner_email", "");
             std::string category = body.value("category",    "Resident");
             bool auto_grant      = body.value("auto_grant",  false);
-            db.add_plate(plate, owner, category, auto_grant);
+            db.add_plate(plate, owner, owner_email, category, auto_grant);
             res.status = 201;
             res.set_content(R"({"ok":true})", "application/json");
         } catch (const std::exception& e) {
@@ -253,5 +266,53 @@ void register_routes(httplib::Server& svr, Database& db) {
         std::ostringstream ss;
         ss << f.rdbuf();
         res.set_content(ss.str(), "image/jpeg");
+    });
+
+    // ── POST /api/notifications/register ───────────────────────────────────────
+    // Body: {"token":"fcm_device_token","platform":"ios-pwa"}
+    svr.Post("/api/notifications/register", [&db](const httplib::Request& req,
+                                                   httplib::Response& res) {
+        cors(res);
+        if (!require_admin_auth(req, res)) return;
+        try {
+            auto body = json::parse(req.body);
+            std::string token = body.at("token");
+            std::string platform = body.value("platform", "web");
+            if (token.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"token is required"})", "application/json");
+                return;
+            }
+            db.register_device_token(token, platform);
+            res.status = 201;
+            res.set_content(R"({"ok":true})", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            json err = {{"error", e.what()}};
+            res.set_content(err.dump(), "application/json");
+        }
+    });
+
+    // ── POST /api/notifications/unregister ─────────────────────────────────────
+    // Body: {"token":"fcm_device_token"}
+    svr.Post("/api/notifications/unregister", [&db](const httplib::Request& req,
+                                                     httplib::Response& res) {
+        cors(res);
+        if (!require_admin_auth(req, res)) return;
+        try {
+            auto body = json::parse(req.body);
+            std::string token = body.at("token");
+            if (token.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"token is required"})", "application/json");
+                return;
+            }
+            db.unregister_device_token(token);
+            res.set_content(R"({"ok":true})", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            json err = {{"error", e.what()}};
+            res.set_content(err.dump(), "application/json");
+        }
     });
 }

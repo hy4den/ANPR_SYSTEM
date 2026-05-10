@@ -15,8 +15,10 @@ int main() {
 
     if (cfg_ocr_token().empty())
         std::cout << "[WARN] OCR_API_TOKEN not set – plates will be 'UNKNOWN'\n";
-    if (cfg_smtp_user().empty())
-        std::cout << "[WARN] SMTP_USER not set – email alerts disabled\n";
+    if (cfg_smtp_user().empty() || cfg_smtp_pass().empty())
+        std::cout << "[WARN] SMTP_USER and SMTP_PASS/SMTP_API_TOKEN must be set – email alerts disabled\n";
+    if (cfg_fcm_service_account_file().empty())
+        std::cout << "[WARN] FCM_SERVICE_ACCOUNT_FILE not set – mobile push disabled\n";
 
     Database db(DB_DEFAULT);
     db.init_schema();

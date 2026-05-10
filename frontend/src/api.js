@@ -48,3 +48,17 @@ export const imageUrl = (imagePath) => {
   if (!filename) return ''
   return `${BASE}/images/${encodeURIComponent(filename)}?admin_token=${encodeURIComponent(ADMIN_TOKEN)}`
 }
+
+export const registerPushToken = (token, platform = 'web') =>
+  json(fetch(`${BASE}/notifications/register`, {
+    method: 'POST',
+    headers: withAdminAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ token, platform }),
+  }))
+
+export const unregisterPushToken = (token) =>
+  json(fetch(`${BASE}/notifications/unregister`, {
+    method: 'POST',
+    headers: withAdminAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ token }),
+  }))
